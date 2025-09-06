@@ -33,7 +33,7 @@ export default function DynamicHome() {
       <>
 
         <StereoVideo{...StereoProps}/>
-        <a-scene >
+        <a-scene>
             <a-entity position={`${-cameraPosition.x} ${-cameraPosition.y} ${-cameraPosition.z}`} >
               <a-entity
                 id="UIBack"

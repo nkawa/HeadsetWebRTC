@@ -67,7 +67,6 @@ export default function StereoVideo(props) {
                                 }
 
 
-
                             });
                         };
                     }
@@ -93,9 +92,11 @@ export default function StereoVideo(props) {
 
                     remoteVideo.onloadeddata = () => {
                         console.log('Video data loaded');
+                        const sceneEl = document.querySelector('a-scene');
+                        sceneEl.setAttribute('xr-mirror-capture', '');
 
                         // 自分の画面を送る！
-                        if (true) {
+                        if (false) {
                             const scene = document.querySelector('a-scene');
                             if (!scene.is("loaded")) {
                                 //
@@ -109,10 +110,10 @@ export default function StereoVideo(props) {
 
                             const stream = canvas.captureStream(15); // 15fps
                             const vTrack = stream.getVideoTracks()[0];
-//                            const audioTrack = stream.getAudioTracks()[0];
+                            //                            const audioTrack = stream.getAudioTracks()[0];
 
-//                            const ac = new AudioContext();//
-//                            const dest = ac.createMediaStreamDestination();
+                            //                            const ac = new AudioContext();//
+                            //                            const dest = ac.createMediaStreamDestination();
 
                             const outStream = new MediaStream([vTrack]);
                             const sendonly = sora.sendonly(
@@ -129,11 +130,11 @@ export default function StereoVideo(props) {
                                     // 端末に応じて simulcast: true を使う場合も（必要なら）
                                 }
                             );
-                            sendonly.on("track", (ev)=>{
+                            sendonly.on("track", (ev) => {
                                 console.log('Sora track:', ev)
                             });
-                            sendonly.on("removetrack", (ev)=>{
-                                console.log("Sora remove",ev)
+                            sendonly.on("removetrack", (ev) => {
+                                console.log("Sora remove", ev)
                             });
 
                             sendonly.connect(outStream).then(() => {
@@ -358,6 +359,7 @@ export default function StereoVideo(props) {
 
     return (
         <>
+            <canvas id="mirror" width="1280" height="720" style={{ display: "none" }}></canvas>
         </>
     )
 }
@@ -462,11 +464,139 @@ if (!('stereo' in AFRAME.components)) {
         },
     };
 
+    // sora の　connection をここで作るしかない？
+    const mirror_capture_component = {
+        schema: {
+
+        },
+        async init() {
+            this.sceneEl = document.querySelector('a-scene');
+            console.log("sceneEl:", this.sceneEl)
+            // A-Frame の renderer 初期化待ち
+            if (!this.sceneEl.renderer) {
+                await new Promise(res => this.sceneEl.addEventListener('render-target-loaded', res, { once: true }));
+            }
+            const afRenderer = this.sceneEl.renderer;
+            console.log("Renderer enabled: ",afRenderer)
+
+            // ミラー用 Three.js レンダラ & 単眼カメラ
+            const mirrorCanvas = document.getElementById('mirror');
+            console.log("Mirror:", mirror)
+            this.mirrorRenderer = new THREE.WebGLRenderer({
+                canvas: mirrorCanvas, antialias: true, alpha: false, preserveDrawingBuffer: false
+            });
+            if (this.mirrorRenderer.outputColorSpace !== undefined) {
+                this.mirrorRenderer.outputColorSpace = this.sceneEl.renderer.outputColorSpace;
+            }
+            this.width = mirrorCanvas.width;
+            this.height = mirrorCanvas.height;
+
+            if (this.mirrorRenderer.toneMapping !== undefined) {
+                this.mirrorRenderer.toneMapping = afRenderer.toneMapping;
+                this.mirrorRenderer.toneMappingExposure = afRenderer.toneMappingExposure ?? 1.0;
+            }
+            this.mirrorRenderer.setClearColor(0x202870, 1);
+
+            this.mirrorRenderer.setSize(mirrorCanvas.width, mirrorCanvas.height, false);
+            this.monoCam = new THREE.PerspectiveCamera(50, mirrorCanvas.width / mirrorCanvas.height, 0.01, 2000);
+
+            // ストリーム作成（FPS=15）
+            this.stream = mirrorCanvas.captureStream(15);
+            console.log("Mirror Stream:", this.stream);
+
+            const signalingUrl = 'wss://sora3.uclab.jp/signaling'; //uclab用
+            const sora = Sora.connection(signalingUrl);
+
+            const vTrack = this.stream.getVideoTracks()[0];
+            if (vTrack && 'contentHint' in vTrack) vTrack.contentHint = 'motion';
+
+
+            const outStream = new MediaStream([vTrack]);
+            const sendonly = sora.sendonly(
+                'headset-capture',
+                undefined,
+                {
+                    audio: false,
+                    video: true,
+                    multistream: false,
+                    videoCodecType: 'VP9',
+                    // 一般的には videoBitRate(bps) または encodings/maxBitrate 相当の指定が可能
+                    videoBitRate: 2000, // kbps指定のSDKもあるため適宜 2000 or 2_000_000 を選択
+                    timeout: 10_000,
+                    // 端末に応じて simulcast: true を使う場合も（必要なら）
+                }
+            );
+            sendonly.on("track", (ev) => {
+                console.log('Sora track:', ev)
+            });
+            sendonly.on("removetrack", (ev) => {
+                console.log("Sora remove", ev)
+            });
+
+            sendonly.connect(outStream).then(() => {
+                console.log('Successfully connected to Sora for headset');
+            }).catch(err => {
+                console.error('Sora connection error for headset:', err);
+            });
+
+            this.active = false;
+            this.sceneEl.addEventListener('enter-vr', () => { this.active = true; });
+            this.sceneEl.addEventListener('exit-vr', () => { this.active = false; });
+        },
+        tick() {
+            if (!this.active) return;
+
+            const afRenderer = this.sceneEl.renderer;
+            const threeScene = this.sceneEl.object3D;
+
+            if (!afRenderer.xr.isPresenting) {
+                console.log("XR not presenting")
+            }else{
+//                console.log("rendere.camera",afRenderer.xr.getCamera())
+                console.log("Scene",threeScene)
+            }
+
+            // XRカメラ（two-eye）の親を取得
+            const arrayCam = afRenderer.xr.getCamera();
+            const left = (arrayCam && arrayCam.cameras && arrayCam.cameras[0]) ? arrayCam.cameras[0] : arrayCam;
+
+            if (left.layers){
+                this.monoCam.layers.mask = left.layers.mask;
+            }
+
+            // カメラ姿勢・投影行列をコピー
+            this.monoCam.position.copy(left.position);
+            this.monoCam.quaternion.copy(left.quaternion);
+            if (left.projectionMatrix) {
+                this.monoCam.projectionMatrix.copy(left.projectionMatrix);
+                if (this.monoCam.projectionMatrixInverse && left.projectionMatrixInverse) {
+                    this.monoCam.projectionMatrixInverse.copy(left.projectionMatrixInverse);
+                }
+            } else {
+                // 念のため aspect を維持
+                this.monoCam.aspect = this.width / this.height;
+                this.monoCam.updateProjectionMatrix();
+            }
+            this.monoCam.updateMatrixWorld(true);
+            threeScene.updateMatrixWorld(true);
+
+            // 同じシーンを mono で再描画（= 視界がちゃんと動く）
+            this.mirrorRenderer.setSize(this.width, this.height, false);
+
+            this.mirrorRenderer.render(threeScene, this.monoCam);
+        }
+    };
+
     if (!('stereo' in AFRAME.components)) {
         AFRAME.registerComponent('stereo', stereoComponent);
     }
     if (!('stereocam' in AFRAME.components)) {
         AFRAME.registerComponent('stereocam', stereocamComponent);
     }
+
+    if (!('xr-mirror-capture' in AFRAME.components)) {
+        AFRAME.registerComponent('xr-mirror-capture', mirror_capture_component);
+    }
+
 }
 
