@@ -471,17 +471,17 @@ if (!('stereo' in AFRAME.components)) {
         },
         async init() {
             this.sceneEl = document.querySelector('a-scene');
-            console.log("sceneEl:", this.sceneEl)
+  //          console.log("sceneEl:", this.sceneEl)
             // A-Frame の renderer 初期化待ち
             if (!this.sceneEl.renderer) {
                 await new Promise(res => this.sceneEl.addEventListener('render-target-loaded', res, { once: true }));
             }
             const afRenderer = this.sceneEl.renderer;
-            console.log("Renderer enabled: ",afRenderer)
+//            console.log("Renderer enabled: ",afRenderer)
 
             // ミラー用 Three.js レンダラ & 単眼カメラ
             const mirrorCanvas = document.getElementById('mirror');
-            console.log("Mirror:", mirror)
+ //           console.log("Mirror:", mirror)
             this.mirrorRenderer = new THREE.WebGLRenderer({
                 canvas: mirrorCanvas, antialias: true, alpha: false, preserveDrawingBuffer: false
             });
@@ -495,14 +495,14 @@ if (!('stereo' in AFRAME.components)) {
                 this.mirrorRenderer.toneMapping = afRenderer.toneMapping;
                 this.mirrorRenderer.toneMappingExposure = afRenderer.toneMappingExposure ?? 1.0;
             }
-            this.mirrorRenderer.setClearColor(0x202870, 1);
+//            this.mirrorRenderer.setClearColor(0x202870, 1);
 
             this.mirrorRenderer.setSize(mirrorCanvas.width, mirrorCanvas.height, false);
-            this.monoCam = new THREE.PerspectiveCamera(50, mirrorCanvas.width / mirrorCanvas.height, 0.01, 2000);
+            this.monoCam = new THREE.PerspectiveCamera(70, mirrorCanvas.width / mirrorCanvas.height, 0.01, 2000);
 
             // ストリーム作成（FPS=15）
             this.stream = mirrorCanvas.captureStream(15);
-            console.log("Mirror Stream:", this.stream);
+//            console.log("Mirror Stream:", this.stream);
 
             const signalingUrl = 'wss://sora3.uclab.jp/signaling'; //uclab用
             const sora = Sora.connection(signalingUrl);
@@ -553,7 +553,7 @@ if (!('stereo' in AFRAME.components)) {
                 console.log("XR not presenting")
             }else{
 //                console.log("rendere.camera",afRenderer.xr.getCamera())
-                console.log("Scene",threeScene)
+  //              console.log("Scene",threeScene)
             }
 
             // XRカメラ（two-eye）の親を取得
@@ -568,20 +568,20 @@ if (!('stereo' in AFRAME.components)) {
             this.monoCam.position.copy(left.position);
             this.monoCam.quaternion.copy(left.quaternion);
             if (left.projectionMatrix) {
-                this.monoCam.projectionMatrix.copy(left.projectionMatrix);
-                if (this.monoCam.projectionMatrixInverse && left.projectionMatrixInverse) {
-                    this.monoCam.projectionMatrixInverse.copy(left.projectionMatrixInverse);
-                }
+//                this.monoCam.projectionMatrix.copy(left.projectionMatrix);
+//                if (this.monoCam.projectionMatrixInverse && left.projectionMatrixInverse) {
+ //                   this.monoCam.projectionMatrixInverse.copy(left.projectionMatrixInverse);
+ //               }
             } else {
                 // 念のため aspect を維持
                 this.monoCam.aspect = this.width / this.height;
                 this.monoCam.updateProjectionMatrix();
             }
-            this.monoCam.updateMatrixWorld(true);
-            threeScene.updateMatrixWorld(true);
+//            this.monoCam.updateMatrixWorld(true);
+//            threeScene.updateMatrixWorld(true);
 
             // 同じシーンを mono で再描画（= 視界がちゃんと動く）
-            this.mirrorRenderer.setSize(this.width, this.height, false);
+//            this.mirrorRenderer.setSize(this.width, this.height, false);
 
             this.mirrorRenderer.render(threeScene, this.monoCam);
         }
